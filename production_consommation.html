@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rice Production vs Consumption in Madagascar by Year (First Row)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .bar {
+            transition: all 0.5s ease;
+        }
+        .legend rect {
+            stroke: #000;
+            stroke-width: 1;
+        }
+        .legend text {
+            font-size: 12px;
+        }
+        .axis text {
+            font-size: 12px;
+        }
+        .axis path, .axis line {
+            stroke: #000;
+        }
+    </style>
+</head>
+<body>
+    <h2>Rice Production vs Consumption in Madagascar by Year (First Row per Year)</h2>
+
+    <a href="evolution_prix.html" style="margin-left: 20px;">Evolution des prix</a>
+    <a href="production_consommation.html" style="margin-left: 20px;">Production vs Consommation</a>
+    <a href="test.html" style="margin-left: 20px;">Test</a>
+    <a href="index.html" style="margin-left: 20px;">Index</a>
+    <svg id="chart" width="900" height="500"></svg>
+    <svg id="chart" width="900" height="500"></svg>
+
+    <script>
+        // Configuration du graphique
+        const margin = { top: 20, right: 150, bottom: 50, left: 60 };
+        const width = 900 - margin.left - margin.right;
+        const height = 500 - margin.top - margin.bottom;
+
+        // Créer le SVG
+        const svg = d3.select("#chart")
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Créer le tooltip
+        const tooltip = d3.select("body")
+            .append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0);
+
+        // Charger les données CSV
+        d3.csv("final_merge.csv").then(data => {
+            // Convertir les données numériques
+            data.forEach(d => {
+                d.FAO_Value = +d.FAO_Value;
+                d.Product = +d.Product; // Convertir Product en milliers de tonnes
+                d.mp_year = +d.mp_year;
+            });
+
+            // Prendre la première ligne pour chaque année
+            const firstRowsByYear = d3.group(data, d => d.mp_year);
+            const chartData = Array.from(firstRowsByYear, ([year, rows]) => {
+                const firstRow = rows[0]; // Prendre la première ligne
+                return {
+                    year,
+                    Production: firstRow.Product,
+                    Consumption: firstRow.Element === "Feed" ? firstRow.FAO_Value : 0 // Consommation si Element = "Feed"
+                };
+            });
+
+            // Obtenir les années uniques
+            const years = chartData.map(d => d.year).sort((a, b) => a - b);
+            const categories = ["Production", "Consumption"];
+
+            // Échelles
+            const x0Scale = d3.scaleBand()
+                .domain(years)
+                .range([0, width])
+                .paddingInner(0.2);
+
+            const x1Scale = d3.scaleBand()
+                .domain(categories)
+                .range([0, x0Scale.bandwidth()])
+                .padding(0.05);
+
+            const yScale = d3.scaleLinear()
+                .domain([0, d3.max(chartData, d => Math.max(d.Production, d.Consumption)) * 1.1])
+                .range([height, 0])
+                .nice();
+
+            // Échelle des couleurs
+            const color = d3.scaleOrdinal()
+                .domain(categories)
+                .range(["#1f77b4", "#ff7f0e"]); // Bleu pour Production, Orange pour Consumption
+
+            // Ajouter les axes
+            svg.append("g")
+                .attr("class", "x-axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x0Scale))
+                .append("text")
+                .attr("x", width / 2)
+                .attr("y", 40)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .text("Year");
+
+            svg.append("g")
+                .attr("class", "y-axis")
+                .call(d3.axisLeft(yScale))
+                .append("text")
+                .attr("x", -height / 2)
+                .attr("y", -40)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .text("Quantity (1000 tonnes)");
+
+            // Ajouter les barres groupées contaminate
+            svg.selectAll(".year-group")
+                .data(chartData)
+                .enter()
+                .append("g")
+                .attr("class", "year-group")
+                .attr("transform", d => `translate(${x0Scale(d.year)},0)`)
+                .selectAll(".bar")
+                .data(d => categories.map(category => ({ year: d.year, category, value: d[category] })))
+                .enter()
+                .append("rect")
+                .attr("class", "bar")
+                .attr("x", d => x1Scale(d.category))
+                .attr("y", height)
+                .attr("width", x1Scale.bandwidth())
+                .attr("height", 0)
+                .attr("fill", d => color(d.category))
+                .on("mouseover", function(event, d) {
+                    tooltip.style("opacity", 1)
+                        .html(`Year: ${d.year}<br>Category: ${d.category}<br>Quantity: ${d3.format(".2f")(d.value)}k tonnes`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", () => tooltip.style("opacity", 0))
+                .transition()
+                .duration(500)
+                .attr("y", d => yScale(d.value))
+                .attr("height", d => height - yScale(d.value));
+
+            // Ajouter une légende
+            const legend = svg.append("g")
+                .attr("class", "legend")
+                .attr("transform", `translate(${width + 20}, 0)`);
+
+            categories.forEach((category, i) => {
+                const legendRow = legend.append("g")
+                    .attr("transform", `translate(0, ${i * 20})`);
+
+                legendRow.append("rect")
+                    .attr("width", 10)
+                    .attr("height", 10)
+                    .attr("fill", color(category));
+
+                legendRow.append("text")
+                    .attr("x", 15)
+                    .attr("y", 10)
+                    .attr("text-anchor", "start")
+                    .text(category);
+            });
+        }).catch(error => {
+            console.error("Error loading the CSV file:", error);
+        });
+    </script>
+</body>
+</html>

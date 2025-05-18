@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rice Price by Region in Madagascar</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .bar {
+            transition: all 0.5s ease;
+        }
+        select {
+            margin-bottom: 10px;
+            padding: 5px;
+            font-size: 16px;
+        }
+        .axis text {
+            font-size: 12px;
+        }
+        .axis path, .axis line {
+            stroke: #000;
+        }
+    </style>
+</head>
+<body>
+    <h2>Rice Price by Region in Madagascar</h2>
+    <label for="year-select">Select Year: </label>
+    <select id="year-select"></select>
+
+    <a href="evolution_prix.html" style="margin-left: 20px;">Evolution des prix</a>
+    <a href="production_consommation.html" style="margin-left: 20px;">Production vs Consommation</a>
+    <a href="test.html" style="margin-left: 20px;">Test</a>
+    <a href="index.html" style="margin-left: 20px;">Index</a>
+    <svg id="chart" width="900" height="500"></svg>
+    <svg id="chart" width="900" height="500"></svg>
+
+    <script>
+        // Configuration du graphique
+        const margin = { top: 20, right: 30, bottom: 100, left: 60 };
+        const width = 900 - margin.left - margin.right;
+        const height = 500 - margin.top - margin.bottom;
+
+        // Créer le SVG
+        const svg = d3.select("#chart")
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Créer le tooltip
+        const tooltip = d3.select("body")
+            .append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0);
+
+        // Charger les données CSV
+        d3.csv("final_merge.csv").then(data => {
+            // Convertir les données numériques
+            data.forEach(d => {
+                d.mp_price = +d.mp_price;
+                d.mp_year = +d.mp_year;
+            });
+
+            // Obtenir les années uniques
+            const years = [...new Set(data.map(d => d.mp_year))].sort();
+            const regions = [...new Set(data.map(d => d.adm1_name))];
+
+            // Remplir le menu déroulant
+            const yearSelect = d3.select("#year-select");
+            yearSelect.selectAll("option")
+                .data(years)
+                .enter()
+                .append("option")
+                .attr("value", d => d)
+                .text(d => d);
+
+            // Échelle des couleurs
+            const color = d3.scaleOrdinal()
+                .domain(regions)
+                .range(d3.schemeTableau10);
+
+            // Fonction pour mettre à jour le graphique
+            function updateChart(selectedYear) {
+                // Filtrer les données pour l'année sélectionnée
+                const filteredData = data.filter(d => d.mp_year === +selectedYear);
+
+                // Calculer la moyenne des prix par région
+                const dataByRegion = d3.rollup(
+                    filteredData,
+                    v => d3.mean(v, d => d.mp_price),
+                    d => d.adm1_name
+                );
+                const chartData = Array.from(dataByRegion, ([region, price]) => ({ region, price }));
+
+                // Échelles
+                const xScale = d3.scaleBand()
+                    .domain(chartData.map(d => d.region))
+                    .range([0, width])
+                    .padding(0.1);
+
+                const yScale = d3.scaleLinear()
+                    .domain([0, d3.max(chartData, d => d.price) * 1.1]) // Ajouter 10% pour la lisibilité
+                    .range([height, 0])
+                    .nice();
+
+                // Mettre à jour les axes
+                const xAxis = d3.axisBottom(xScale);
+                const yAxis = d3.axisLeft(yScale);
+
+                svg.selectAll(".x-axis")
+                    .data([0])
+                    .join("g")
+                    .attr("class", "x-axis")
+                    .attr("transform", `translate(0,${height})`)
+                    .call(xAxis)
+                    .selectAll("text")
+                    .style("text-anchor", "end")
+                    .attr("dx", "-.8em")
+                    .attr("dy", ".15em")
+                    .attr("transform", "rotate(-45)");
+
+                svg.selectAll(".y-axis")
+                    .data([0])
+                    .join("g")
+                    .attr("class", "y-axis")
+                    .call(yAxis);
+
+                // Ajouter les étiquettes des axes
+                svg.selectAll(".x-axis-label")
+                    .data([0])
+                    .join("text")
+                    .attr("class", "x-axis-label")
+                    .attr("x", width / 2)
+                    .attr("y", height + 80)
+                    .attr("fill", "black")
+                    .attr("text-anchor", "middle")
+                    .text("Region");
+
+                svg.selectAll(".y-axis-label")
+                    .data([0])
+                    .join("text")
+                    .attr("class", "y-axis-label")
+                    .attr("x", -height / 2)
+                    .attr("y", -40)
+                    .attr("fill", "black")
+                    .attr("text-anchor", "middle")
+                    .attr("transform", "rotate(-90)")
+                    .text("Average Price (MGA per KG)");
+
+                // Mettre à jour les barres
+                svg.selectAll(".bar")
+                    .data(chartData, d => d.region)
+                    .join(
+                        enter => enter.append("rect")
+                            .attr("class", "bar")
+                            .attr("x", d => xScale(d.region))
+                            .attr("y", height)
+                            .attr("width", xScale.bandwidth())
+                            .attr("height", 0)
+                            .attr("fill", d => color(d.region))
+                            .call(enter => enter.transition()
+                                .duration(500)
+                                .attr("y", d => yScale(d.price))
+                                .attr("height", d => height - yScale(d.price))),
+                        update => update.transition()
+                            .duration(500)
+                            .attr("x", d => xScale(d.region))
+                            .attr("y", d => yScale(d.price))
+                            .attr("width", xScale.bandwidth())
+                            .attr("height", d => height - yScale(d.price)),
+                        exit => exit.transition()
+                            .duration(500)
+                            .attr("y", height)
+                            .attr("height", 0)
+                            .remove()
+                    )
+                    .on("mouseover", function(event, d) {
+                        tooltip.style("opacity", 1)
+                            .html(`Region: ${d.region}<br>Price: ${d3.format(".2f")(d.price)} MGA`)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 10) + "px");
+                    })
+                    .on("mouseout", () => tooltip.style("opacity", 0));
+            }
+
+            // Initialiser le graphique avec la première année
+            updateChart(years[0]);
+
+            // Mettre à jour le graphique lors du changement d'année
+            yearSelect.on("change", function() {
+                updateChart(this.value);
+            });
+        }).catch(error => {
+            console.error("Error loading the CSV file:", error);
+        });
+    </script>
+</body>
+</html>

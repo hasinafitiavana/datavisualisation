@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rice Price Trends in Madagascar Markets (All Years)</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .legend rect {
+            stroke: #000;
+            stroke-width: 1;
+        }
+        .legend text {
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Rice Price Trends in Madagascar Markets (All Years)</h2>
+
+    <a href="evolution_prix.html" style="margin-left: 20px;">Evolution des prix</a>
+    <a href="production_consommation.html" style="margin-left: 20px;">Production vs Consommation</a>
+    <a href="test.html" style="margin-left: 20px;">Test</a>
+    <a href="index.html" style="margin-left: 20px;">Index</a>
+    <svg id="chart" width="900" height="500"></svg>
+    <svg id="chart" width="900" height="500"></svg>
+
+    <script>
+        // Configuration du graphique
+        const margin = { top: 20, right: 150, bottom: 50, left: 60 };
+        const width = 900 - margin.left - margin.right;
+        const height = 500 - margin.top - margin.bottom;
+
+        // Créer le SVG
+        const svg = d3.select("#chart")
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Charger les données CSV
+        d3.csv("final_merge.csv").then(data => {
+            // Convertir les données numériques et créer des dates
+            data.forEach(d => {
+                d.mp_month = +d.mp_month;
+                d.mp_price = +d.mp_price;
+                d.mp_year = +d.mp_year;
+                // Créer une date à partir de l'année et du mois (1er jour du mois)
+                d.date = new Date(d.mp_year, d.mp_month - 1, 1);
+            });
+
+            // Regrouper par marché
+            const markets = [...new Set(data.map(d => d.mkt_name))];
+            const nestedData = markets.map(market => ({
+                market,
+                values: data.filter(d => d.mkt_name === market)
+                    .sort((a, b) => a.date - b.date) // Trier par date
+            }));
+
+            // Échelles
+            const xScale = d3.scaleTime()
+                .domain(d3.extent(data, d => d.date)) // Plage des dates
+                .range([0, width]);
+
+            const yScale = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.mp_price)])
+                .range([height, 0])
+                .nice();
+
+            // Couleurs pour les lignes
+            const color = d3.scaleOrdinal()
+                .domain(markets)
+                .range(d3.schemeCategory10);
+
+            // Générateur de ligne
+            const line = d3.line()
+                .x(d => xScale(d.date))
+                .y(d => yScale(d.mp_price))
+                .defined(d => !isNaN(d.mp_price));
+
+            // Ajouter les axes
+            svg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScale).tickFormat(d3.timeFormat("%Y-%m")))
+                .selectAll("text")
+                .style("text-anchor", "end")
+                .attr("dx", "-.8em")
+                .attr("dy", ".15em")
+                .attr("transform", "rotate(-45)");
+
+            svg.append("text")
+                .attr("x", width / 2)
+                .attr("y", height + 40)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .text("Date (Year-Month)");
+
+            svg.append("g")
+                .call(d3.axisLeft(yScale))
+                .append("text")
+                .attr("x", -height / 2)
+                .attr("y", -40)
+                .attr("fill", "black")
+                .attr("text-anchor", "middle")
+                .attr("transform", "rotate(-90)")
+                .text("Price (MGA per KG)");
+
+            // Ajouter les lignes
+            svg.selectAll(".line")
+                .data(nestedData)
+                .enter()
+                .append("path")
+                .attr("class", "line")
+                .attr("d", d => line(d.values))
+                .attr("fill", "none")
+                .attr("stroke", d => color(d.market))
+                .attr("stroke-width", 2);
+
+            // Ajouter des cercles pour les points de données
+            svg.selectAll(".dot")
+                .data(data)
+                .enter()
+                .append("circle")
+                .attr("class", "dot")
+                .attr("cx", d => xScale(d.date))
+                .attr("cy", d => yScale(d.mp_price))
+                .attr("r", 4)
+                .attr("fill", d => color(d.mkt_name))
+                .on("mouseover", function(event, d) {
+                    tooltip.style("opacity", 1)
+                        .html(`Market: ${d.mkt_name}<br>Date: ${d.mp_year}-${d.mp_month}<br>Price: ${d.mp_price} MGA`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 10) + "px");
+                })
+                .on("mouseout", () => tooltip.style("opacity", 0));
+
+            // Ajouter une légende
+            const legend = svg.append("g")
+                .attr("class", "legend")
+                .attr("transform", `translate(${width + 20}, 0)`);
+
+            markets.forEach((market, i) => {
+                const legendRow = legend.append("g")
+                    .attr("transform", `translate(0, ${i * 20})`);
+
+                legendRow.append("rect")
+                    .attr("width", 10)
+                    .attr("height", 10)
+                    .attr("fill", color(market));
+
+                legendRow.append("text")
+                    .attr("x", 15)
+                    .attr("y", 10)
+                    .attr("text-anchor", "start")
+                    .text(market);
+            });
+
+            // Créer le tooltip
+            const tooltip = d3.select("body")
+                .append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+        }).catch(error => {
+            console.error("Error loading the CSV file:", error);
+        });
+    </script>
+</body>
+</html>
