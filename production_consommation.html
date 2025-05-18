@@ -177,6 +177,25 @@
                 .attr("y", d => yScale(d.value))
                 .attr("height", d => height - yScale(d.value));
 
+            // Ajouter les ratios consommation/production au-dessus de chaque groupe d'année
+            svg.selectAll(".ratio-label")
+                .data(chartData)
+                .enter()
+                .append("text")
+                .attr("class", "ratio-label")
+                .attr("x", d => x0Scale(d.year) + x0Scale.bandwidth() / 2)
+                .attr("y", d => yScale(Math.max(d.Production, d.Consumption)) - 10)
+                .attr("text-anchor", "middle")
+                .attr("fill", "black")
+                .attr("font-size", "12px")
+                .text(d => {
+                    if (d.Production > 0) {
+                        return `${(d.Production / d.Consumption).toFixed(2)}`;
+                    } else {
+                        return "";
+                    }
+                });
+
             // Ajouter une légende
             const legend = svg.append("g")
                 .attr("class", "legend")
