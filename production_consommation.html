@@ -38,7 +38,7 @@
     </style>
 </head>
 <body>
-    <h2>Rice Production vs Consumption in Madagascar by Year (First Row per Year)</h2>
+    <h2>Comparaison de la production de riz par rapport à la consommation sur chaque année</h2>
 
     <a href="evolution_prix.html" style="margin-left: 20px;">Evolution des prix</a>
     <a href="production_consommation.html" style="margin-left: 20px;">Production vs Consommation</a>
@@ -84,6 +84,13 @@
                     Consumption: firstRow.Element === "Feed" ? firstRow.FAO_Value : 0 // Consommation si Element = "Feed"
                 };
             });
+
+            for (let index = 0; index < chartData.length; index++) {
+                if (index == 0) continue;
+                
+                chartData[index].previous_ratio_production = chartData[index].Production / chartData[index-1].Production
+                chartData[index].previous_ratio_consom = chartData[index].Consumption / chartData[index-1].Consumption
+            }
 
             // Obtenir les années uniques
             const years = chartData.map(d => d.year).sort((a, b) => a - b);
@@ -151,8 +158,16 @@
                 .attr("height", 0)
                 .attr("fill", d => color(d.category))
                 .on("mouseover", function(event, d) {
+                    // Find the current year data
+                    const current = chartData.find(cd => cd.year === d.year);
+                    let ratioText = "";
+                    if (current && d.category === "Production" && current.previous_ratio_production) {
+                        ratioText = `<br>Ratio année dernière: ${d3.format(".2f")(current.previous_ratio_production)}`;
+                    } else if (current && d.category === "Consumption" && current.previous_ratio_consom) {
+                        ratioText = `<br>Ratio année dernière: ${d3.format(".2f")(current.previous_ratio_consom)}`;
+                    }
                     tooltip.style("opacity", 1)
-                        .html(`Year: ${d.year}<br>Category: ${d.category}<br>Quantity: ${d3.format(".2f")(d.value)}k tonnes`)
+                        .html(`Year: ${d.year}<br>Category: ${d.category}<br>Quantity: ${d3.format(".2f")(d.value)}k tonnes${ratioText}`)
                         .style("left", (event.pageX + 10) + "px")
                         .style("top", (event.pageY - 10) + "px");
                 })
