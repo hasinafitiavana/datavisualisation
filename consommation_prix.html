@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rice Price and Consumption by Year</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #chart {
+            border: 1px solid #ccc;
+        }
+        .bar {
+            fill-opacity: 0.8;
+        }
+        .price-bar {
+            fill: #1f77b4; /* Bleu pour le prix */
+        }
+        .consumption-bar {
+            fill: #2ca02c; /* Vert pour la consommation */
+        }
+        .axis text {
+            font-size: 12px;
+            fill: #333;
+        }
+        .axis-label {
+            font-size: 14px;
+            font-weight: bold;
+            fill: #333;
+        }
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid black;
+            padding: 5px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        svg {
+            overflow: visible;
+        }
+    </style>
+</head>
+<body>
+    <h2>Rice Price and Consumption by Year in Madagascar</h2>
+    <a href="evolution_prix.html" style="margin-left: 20px;">Evolution des prix</a>
+    <a href="production_consommation.html" style="margin-left: 20px;">Production vs Consommation</a>
+    <a href="test.html" style="margin-left: 20px;">Test</a>
+    <a href="index.html" style="margin-left: 20px;">Index</a>
+    <a href="consommation_prix.html" style="margin-left: 20px;">Consommation vs Prix</a>
+    <svg id="chart" width="600" height="500"></svg>
+    <script>
+        // Set dimensions and margins
+        const margin = { top: 60, right: 100, bottom: 80, left: 100 };
+        const width = 600 - margin.left - margin.right;
+        const height = 500 - margin.top - margin.bottom;
+
+        // Create SVG
+        const svg = d3.select("#chart")
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Tooltip
+        const tooltip = d3.select("body").append("div")
+            .attr("class", "tooltip")
+            .style("visibility", "hidden");
+
+        // Load and process data
+        d3.csv("final_merge.csv").then(data => {
+            // Parse and process data
+            data.forEach(d => {
+                d.mp_year = +d.mp_year;
+                d.mp_price = +d.mp_price;
+                d.FAO_Value = +d.FAO_Value;
+            });
+
+            // Aggregate data by year
+            const aggregatedData = d3.rollup(
+                data,
+                v => ({
+                    avgPrice: d3.mean(v, d => d.mp_price),
+                    consumption: d3.mean(v, d => d.FAO_Value) // Average FAO_Value per year
+                }),
+                d => d.mp_year
+            );
+            const chartData = Array.from(aggregatedData, ([year, { avgPrice, consumption }]) => ({
+                year,
+                avgPrice,
+                consumption
+            })).sort((a, b) => a.year - b.year);
+
+            // Set scales
+            const xScale = d3.scaleBand()
+                .domain(chartData.map(d => d.year))
+                .range([0, width])
+                .padding(0.1);
+
+            const yPriceScale = d3.scaleLinear()
+                .domain([0, d3.max(chartData, d => d.avgPrice) * 1.1])
+                .range([height, 0]);
+
+            const yConsScale = d3.scaleLinear()
+                .domain([0, d3.max(chartData, d => d.consumption) * 1.1])
+                .range([height, 0]);
+
+            // Add axes
+            svg.append("g")
+                .attr("class", "axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScale))
+                .append("text")
+                .attr("class", "axis-label")
+                .attr("x", width / 2)
+                .attr("y", 50)
+                .attr("fill", "black")
+                .text("Year");
+
+            svg.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(yPriceScale))
+                .append("text")
+                .attr("class", "axis-label")
+                .attr("transform", "rotate(-90)")
+                .attr("y", -60)
+                .attr("x", -height / 2)
+                .attr("fill", "black")
+                .text("Average Price (MGA/tonne)");
+
+            svg.append("g")
+                .attr("class", "axis")
+                .attr("transform", `translate(${width},0)`)
+                .call(d3.axisRight(yConsScale))
+                .append("text")
+                .attr("class", "axis-label")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 80)
+                .attr("x", -height / 2)
+                .attr("fill", "black")
+                .text("Consumption (tonnes)");
+
+            // Plot bars for price
+            svg.selectAll(".price-bar")
+                .data(chartData)
+                .enter()
+                .append("rect")
+                .attr("class", "bar price-bar")
+                .attr("x", d => xScale(d.year))
+                .attr("y", d => yPriceScale(d.avgPrice))
+                .attr("width", xScale.bandwidth() / 2)
+                .attr("height", d => height - yPriceScale(d.avgPrice))
+                .on("mouseover", function(event, d) {
+                    d3.select(this).attr("fill-opacity", 1);
+                    tooltip.style("visibility", "visible")
+                        .html(`Year: ${d.year}<br>Price: ${Math.round(d.avgPrice)} MGA/tonne`);
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("top", (event.pageY - 10) + "px")
+                        .style("left", (event.pageX + 10) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).attr("fill-opacity", 0.8);
+                    tooltip.style("visibility", "hidden");
+                });
+
+            // Plot bars for consumption
+            svg.selectAll(".consumption-bar")
+                .data(chartData)
+                .enter()
+                .append("rect")
+                .attr("class", "bar consumption-bar")
+                .attr("x", d => xScale(d.year) + xScale.bandwidth() / 2)
+                .attr("y", d => yConsScale(d.consumption))
+                .attr("width", xScale.bandwidth() / 2)
+                .attr("height", d => height - yConsScale(d.consumption))
+                .on("mouseover", function(event, d) {
+                    d3.select(this).attr("fill-opacity", 1);
+                    tooltip.style("visibility", "visible")
+                        .html(`Year: ${d.year}<br>Consumption: ${Math.round(d.consumption)} tonnes`);
+                })
+                .on("mousemove", function(event) {
+                    tooltip.style("top", (event.pageY - 10) + "px")
+                        .style("left", (event.pageX + 10) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).attr("fill-opacity", 0.8);
+                    tooltip.style("visibility", "hidden");
+                });
+        });
+    </script>
+</body>
+</html>

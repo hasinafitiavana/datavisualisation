@@ -46,150 +46,197 @@
     <a href="production_consommation.html" style="margin-left: 20px;">Production vs Consommation</a>
     <a href="test.html" style="margin-left: 20px;">Test</a>
     <a href="index.html" style="margin-left: 20px;">Index</a>
+    <a href="consommation_prix.html" style="margin-left: 20px;">Consommation vs Prix</a>
     <svg id="chart" width="900" height="500"></svg>
+<script>
+    const margin = { top: 20, right: 150, bottom: 50, left: 60 };
+    const width = 900 - margin.left - margin.right;
+    const height = 500 - margin.top - margin.bottom;
 
-    <script>
-        const margin = { top: 20, right: 150, bottom: 50, left: 60 };
-        const width = 900 - margin.left - margin.right;
-        const height = 500 - margin.top - margin.bottom;
+    const svg = d3.select("#chart")
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
 
-        const svg = d3.select("#chart")
-            .append("g")
-            .attr("transform", `translate(${margin.left},${margin.top})`);
+    const selectElement = document.getElementById("annee");
 
-        const selectElement = document.getElementById("annee");
+    let rawData = [];
+    let markets = [];
+    let color;
 
-        let rawData = [];
-        let markets = [];
+    // Échelles
+    const xScale = d3.scaleLinear()
+        .domain([1, 12])
+        .range([0, width]);
 
-        // Échelles
-        const xScale = d3.scaleLinear()
-            .domain([1, 12]) // Mois de 1 à 12
-            .range([0, width]);
+    const yScale = d3.scaleLinear()
+        .range([height, 0]);
 
-        const yScale = d3.scaleLinear()
-            .range([height, 0]);
+    // Générateur de ligne
+    const line = d3.line()
+        .x(d => xScale(d.mp_month))
+        .y(d => yScale(d.mp_price))
+        .defined(d => !isNaN(d.mp_price) && d.mp_price !== null);
 
-        // Générateur de ligne
-        const line = d3.line()
-            .x(d => xScale(d.mp_month))
-            .y(d => yScale(d.mp_price))
-            .defined(d => !isNaN(d.mp_price));
+    // Fonction pour dessiner la légende
+    function drawLegend() {
+        svg.selectAll(".legend").remove();
 
-        // Fonction pour dessiner la légende
-        function drawLegend() {
-            // Supprimer ancienne légende si elle existe
-            svg.selectAll(".legend").remove();
+        const legend = svg.append("g")
+            .attr("class", "legend")
+            .attr("transform", `translate(${width + 20}, 20)`);
 
-            const legend = svg.append("g")
-                .attr("class", "legend")
-                .attr("transform", `translate(${width + 20}, 20)`);
+        markets.forEach((market, i) => {
+            const g = legend.append("g")
+                .attr("transform", `translate(0, ${i * 25})`);
 
-            markets.forEach((market, i) => {
-                const g = legend.append("g")
-                    .attr("transform", `translate(0, ${i * 25})`);
+            g.append("rect")
+                .attr("width", 18)
+                .attr("height", 18)
+                .attr("fill", color(market));
 
-                g.append("rect")
-                    .attr("width", 18)
-                    .attr("height", 18)
-                    .attr("fill", color(market));
+            g.append("text")
+                .attr("x", 24)
+                .attr("y", 14)
+                .text(market);
+        });
+    }
 
-                g.append("text")
-                    .attr("x", 24)
-                    .attr("y", 14)
-                    .text(market);
-            });
-        }
-
-        // Charger les données
-        d3.csv("final_merge.csv").then(data => {
-            data.forEach(d => {
-                d.mp_month = +d.mp_month;
-                d.mp_price = +d.mp_price;
-                d.mp_year = +d.mp_year;
-            });
-
-            rawData = data;
-            markets = [...new Set(data.map(d => d.mkt_name))];
-
-            // Couleurs pour les lignes
-            color = d3.scaleOrdinal()
-                .domain(markets)
-                .range(d3.schemeCategory10);
-
-            drawLegend();
-
-            // Initialiser le graphique pour l'année sélectionnée par défaut
-            updateChart(+selectElement.value);
-
-            // Ajouter un listener pour le changement d'année
-            selectElement.addEventListener("change", function () {
-                updateChart(+this.value);
-            });
+    // Charger les données
+    d3.csv("final_merge.csv").then(data => {
+        // Valider et convertir les données
+        rawData = data.filter(d => {
+            d.mp_month = +d.mp_month;
+            d.mp_price = +d.mp_price;
+            d.mp_year = +d.mp_year;
+            // Filtrer les données invalides
+            if (isNaN(d.mp_month) || isNaN(d.mp_price) || isNaN(d.mp_year) || d.mp_price === null) {
+                console.warn("Donnée invalide filtrée:", d);
+                return false;
+            }
+            return true;
         });
 
-        // Fonction de mise à jour du graphique
-        function updateChart(year) {
-            const filteredData = rawData.filter(d => d.mp_year === year);
+        markets = [...new Set(rawData.map(d => d.mkt_name))].filter(m => m); // Exclure les noms de marché vides
+        console.log("Marchés:", markets);
 
-            const nestedData = markets.map(market => ({
-                market,
-                values: filteredData.filter(d => d.mkt_name === market)
-                    .sort((a, b) => a.mp_month - b.mp_month)
-            }));
+        // Couleurs
+        color = d3.scaleOrdinal()
+            .domain(markets)
+            .range(d3.schemeCategory10);
 
-            // Mettre à jour l'échelle Y
-            yScale.domain([0, d3.max(filteredData, d => d.mp_price)]).nice();
+        drawLegend();
 
-            // Mise à jour des axes
+        // Initialiser le graphique
+        updateChart(+selectElement.value);
 
-            // Axe X
-            svg.selectAll(".x-axis").remove();
-            svg.append("g")
-                .attr("class", "x-axis")
-                .attr("transform", `translate(0, ${height})`)
-                .call(d3.axisBottom(xScale).ticks(12).tickFormat(d => `M${d}`));
+        // Listener pour changement d'année
+        selectElement.addEventListener("change", function () {
+            updateChart(+this.value);
+        });
+    }).catch(error => {
+        console.error("Erreur lors du chargement du CSV:", error);
+    });
 
-            // Axe Y
-            svg.selectAll(".y-axis").remove();
-            svg.append("g")
-                .attr("class", "y-axis")
-                .call(d3.axisLeft(yScale));
+    // Fonction de mise à jour du graphique
+    function updateChart(year) {
+        const filteredData = rawData.filter(d => d.mp_year === year);
+        console.log(`Données filtrées pour ${year}:`, filteredData);
 
-            // Mise à jour des lignes
-            const lines = svg.selectAll(".line")
-                .data(nestedData);
-
-            lines.enter()
-                .append("path")
-                .attr("class", "line")
-                .merge(lines)
-                .transition()
-                .duration(750)
-                .attr("d", d => line(d.values))
-                .attr("fill", "none")
-                .attr("stroke", d => color(d.market))
-                .attr("stroke-width", 2);
-
-            lines.exit().remove();
-
-            // Mise à jour des points
-            const dots = svg.selectAll(".dot")
-                .data(filteredData);
-
-            dots.enter()
-                .append("circle")
-                .attr("class", "dot")
-                .merge(dots)
-                .transition()
-                .duration(750)
-                .attr("cx", d => xScale(d.mp_month))
-                .attr("cy", d => yScale(d.mp_price))
-                .attr("r", 4)
-                .attr("fill", d => color(d.mkt_name));
-
-            dots.exit().remove();
+        if (filteredData.length === 0) {
+            // Afficher un message si aucune donnée
+            svg.selectAll("*").remove();
+            svg.append("text")
+                .attr("x", width / 2)
+                .attr("y", height / 2)
+                .attr("text-anchor", "middle")
+                .text(`Aucune donnée disponible pour ${year}`);
+            return;
         }
-    </script>
+
+        const nestedData = markets.map(market => ({
+            market,
+            values: filteredData.filter(d => d.mkt_name === market)
+                .sort((a, b) => a.mp_month - b.mp_month)
+        })).filter(d => d.values.length > 0); // Exclure les marchés sans données
+
+        // Mettre à jour l'échelle Y
+        const maxPrice = d3.max(filteredData, d => d.mp_price);
+        yScale.domain([0, maxPrice && !isNaN(maxPrice) ? maxPrice : 1000000]).nice(); // Fallback à 1M si maxPrice est invalide
+
+        // Mise à jour des axes
+        svg.selectAll(".x-axis").remove();
+        svg.append("g")
+            .attr("class", "x-axis")
+            .attr("transform", `translate(0, ${height})`)
+            .call(d3.axisBottom(xScale).ticks(12).tickFormat(d => `M${d}`))
+            .append("text")
+            .attr("x", width / 2)
+            .attr("y", 40)
+            .attr("fill", "black")
+            .attr("text-anchor", "middle")
+            .text("Mois");
+
+        svg.selectAll(".y-axis").remove();
+        svg.append("g")
+            .attr("class", "y-axis")
+            .call(d3.axisLeft(yScale))
+            .append("text")
+            .attr("x", -height / 2)
+            .attr("y", -40)
+            .attr("fill", "black")
+            .attr("transform", "rotate(-90)")
+            .attr("text-anchor", "middle")
+            .text("Prix (MGA/kg)");
+
+        // Mise à jour des lignes
+        const lines = svg.selectAll(".line")
+            .data(nestedData, d => d.market);
+
+        lines.enter()
+            .append("path")
+            .attr("class", "line")
+            .merge(lines)
+            .transition()
+            .duration(750)
+            .attr("d", d => line(d.values))
+            .attr("fill", "none")
+            .attr("stroke", d => color(d.market))
+            .attr("stroke-width", 2);
+
+        lines.exit().remove();
+
+        // Mise à jour des points
+        const dots = svg.selectAll(".dot")
+            .data(filteredData, d => `${d.mkt_name}-${d.mp_month}`);
+
+        dots.enter()
+            .append("circle")
+            .attr("class", "dot")
+            .merge(dots)
+            .transition()
+            .duration(750)
+            .attr("cx", d => xScale(d.mp_month))
+            .attr("cy", d => yScale(d.mp_price))
+            .attr("r", 4)
+            .attr("fill", d => color(d.mkt_name));
+
+        dots.exit().remove();
+
+        // Tooltip
+        svg.selectAll(".dot")
+            .on("mouseover", function (event, d) {
+                d3.select("body").selectAll(".tooltip").remove(); // Supprimer les tooltips existants
+                d3.select("body").append("div")
+                    .attr("class", "tooltip")
+                    .style("opacity", 0.9)
+                    .html(`Marché: ${d.mkt_name}<br>Mois: ${d.mp_month}<br>Prix: ${d3.format(",.0f")(d.mp_price)} MGA/kg`)
+                    .style("left", (event.pageX + 10) + "px")
+                    .style("top", (event.pageY - 28) + "px");
+            })
+            .on("mouseout", function () {
+                d3.select("body").selectAll(".tooltip").remove();
+            });
+    }
+</script>
 </body>
 </html>
